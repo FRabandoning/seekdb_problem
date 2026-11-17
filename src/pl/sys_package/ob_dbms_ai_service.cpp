@@ -25,6 +25,8 @@
 #include "share/ob_rpc_struct.h"
 #include "src/pl/ob_pl.h"
 #include "sql/privilege_check/ob_ai_model_priv_util.h"
+#include "lib/worker.h"
+#include "lib/time/ob_time_utility.h"
 
 using namespace oceanbase::share;
 
@@ -32,6 +34,21 @@ namespace oceanbase
 {
 namespace pl
 {
+
+namespace
+{
+const int64_t AI_DDL_MIN_TIMEOUT_US = 60LL * 1000LL * 1000LL;
+
+// The first ai model DDL on a cold server waits for the schema refresh and
+// easily exceeds the default 10s statement deadline, reporting 4012 instead
+// of the real DDL result. Widen only this statement's deadline.
+void extend_ai_ddl_timeout()
+{
+  if (THIS_WORKER.get_timeout_remain() < AI_DDL_MIN_TIMEOUT_US) {
+    THIS_WORKER.set_timeout_ts(common::ObTimeUtility::current_time() + AI_DDL_MIN_TIMEOUT_US);
+  }
+}
+} // namespace
 
 int ObDBMSAiService::check_ai_model_privilege_(ObPLExecCtx &ctx, ObPrivSet required_priv)
 {
@@ -93,6 +110,7 @@ int ObDBMSAiService::create_ai_model_endpoint(ObPLExecCtx &ctx, sql::ParamStore 
   ObString endpoint_name;
   query::ObIAiEndpointAdmin *endpoint_admin = ctx.ai_endpoint_admin_;
   ctx.set_is_sensitive(true);
+  extend_ai_ddl_timeout();
 
   if (OB_FAIL(precheck_version_and_param_count_(2, params))) {
   } else if (OB_FAIL(ObDBMSAiService::check_ai_model_privilege_(ctx, OB_PRIV_CREATE_AI_MODEL))) {
@@ -131,6 +149,7 @@ int ObDBMSAiService::alter_ai_model_endpoint(ObPLExecCtx &ctx, sql::ParamStore &
   int ret = OB_SUCCESS;
   ObString endpoint_name;
   query::ObIAiEndpointAdmin *endpoint_admin = ctx.ai_endpoint_admin_;
+  extend_ai_ddl_timeout();
 
   if (OB_FAIL(precheck_version_and_param_count_(2, params))) {
   } else if (OB_FAIL(ObDBMSAiService::check_ai_model_privilege_(ctx, OB_PRIV_ALTER_AI_MODEL))) {
@@ -168,6 +187,7 @@ int ObDBMSAiService::drop_ai_model_endpoint(ObPLExecCtx &ctx, sql::ParamStore &p
   int ret = OB_SUCCESS;
   ObString endpoint_name;
   query::ObIAiEndpointAdmin *endpoint_admin = ctx.ai_endpoint_admin_;
+  extend_ai_ddl_timeout();
 
   if (OB_FAIL(precheck_version_and_param_count_(1, params))) {
   } else if (OB_FAIL(ObDBMSAiService::check_ai_model_privilege_(ctx, OB_PRIV_DROP_AI_MODEL))) {
@@ -235,6 +255,7 @@ int ObDBMSAiService::create_ai_model(ObPLExecCtx &ctx, sql::ParamStore &params, 
   query::ObIRootCommandService *root_commands =
       OB_ISNULL(ctx.exec_ctx_) ? nullptr
                                : ctx.exec_ctx_->get_root_command_service();
+  extend_ai_ddl_timeout();
 
   if (OB_FAIL(precheck_version_and_param_count_(2, params))) {
   } else if (OB_FAIL(ObDBMSAiService::check_ai_model_privilege_(ctx, OB_PRIV_CREATE_AI_MODEL))) {
@@ -295,6 +316,7 @@ int ObDBMSAiService::drop_ai_model(ObPLExecCtx &ctx, sql::ParamStore &params, co
   query::ObIRootCommandService *root_commands =
       OB_ISNULL(ctx.exec_ctx_) ? nullptr
                                : ctx.exec_ctx_->get_root_command_service();
+  extend_ai_ddl_timeout();
 
   if (OB_FAIL(precheck_version_and_param_count_(1, params))) {
   } else if (OB_FAIL(ObDBMSAiService::check_ai_model_privilege_(ctx, OB_PRIV_DROP_AI_MODEL))) {
