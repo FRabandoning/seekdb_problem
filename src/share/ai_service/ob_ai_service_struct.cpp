@@ -92,6 +92,7 @@ int ObAiModelEndpointInfo::deep_copy(
   } else if (OB_FAIL(ob_write_string(allocator, other.request_transform_fn_, request_transform_fn_))) {
   } else if (OB_FAIL(ob_write_string(allocator, other.response_transform_fn_, response_transform_fn_))) {
   }
+  max_concurrency_ = other.max_concurrency_;
   return ret;
 }
 
@@ -148,6 +149,11 @@ bool ObAiModelEndpointInfo::is_valid_provider(const ObString &provider)
   return is_valid;
 }
 
+bool ObAiModelEndpointInfo::is_valid_max_concurrency(int64_t max_concurrency)
+{
+  return max_concurrency >= 1 && max_concurrency <= 1024;
+}
+
 int ObAiModelEndpointInfo::merge_delta_endpoint(common::ObArenaAllocator &allocator, const ObIJsonBase &delta_jbase)
 {
   int ret = OB_SUCCESS;
@@ -156,6 +162,17 @@ int ObAiModelEndpointInfo::merge_delta_endpoint(common::ObArenaAllocator &alloca
   while (!iter.end() && OB_SUCC(ret)) {
     ObJsonObjPair elem;
     if (OB_FAIL(iter.get_elem(elem))) {
+    } else if (elem.first.case_compare("max_concurrency") == 0) {
+      if (elem.second->json_type() != ObJsonNodeType::J_INT) {
+        ret = OB_AI_FUNC_PARAM_VALUE_INVALID;
+        LOG_USER_ERROR(OB_AI_FUNC_PARAM_VALUE_INVALID, strlen("max_concurrency"), "max_concurrency");
+      } else if (!is_valid_max_concurrency(elem.second->get_int())) {
+        ret = OB_AI_FUNC_PARAM_VALUE_INVALID;
+        LOG_USER_ERROR(OB_AI_FUNC_PARAM_VALUE_INVALID, strlen("max_concurrency"), "max_concurrency");
+        LOG_WARN("max_concurrency out of range", K(ret), K(elem.second->get_int()));
+      } else {
+        max_concurrency_ = elem.second->get_int();
+      }
     } else {
       EXTRACT_JSON_ELEM_STR("scope", scope_)
       EXTRACT_JSON_ELEM_STR("ai_model_name", ai_model_name_)
